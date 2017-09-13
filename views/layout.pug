@@ -1,0 +1,22 @@
+doctype html
+html
+  head
+    title Logster
+    link(rel='stylesheet', href='/stylesheets/style.css')
+    script(src='/javascripts/main.js')
+  body
+    nav.navbar(role="navigation" aria-label="dropdown navigation")
+      .navbar-menu
+        a.navbar-item(href="/")
+          strong Logster
+
+        .navbar-item.has-dropdown.is-hoverable
+          a.navbar-link Feeds
+
+          .navbar-dropdown.is-boxed
+            for feed in feeds
+              a.navbar-item(href="/" + feed)= feed
+
+
+    .section
+      block content

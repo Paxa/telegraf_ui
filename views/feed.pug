@@ -1,0 +1,35 @@
+extends layout
+
+block content
+  h3.title Logs for #{name}
+
+  form
+    ul
+      for field in fields
+        li
+          label= field.fieldKey
+          input(name = `q[${field.fieldKey}]` placeholder = field.fieldType)
+    input(type="submit" value="Search")
+
+  if logRows.length
+    table.table.is-narrow.feed-table
+      thead
+        tr
+          for key in Object.keys(logRows[0])
+            if key != "path" && key != "host"
+              th(class=`field-${key}`)= key
+      tbody
+        for row in logRows
+          tr
+            for field in Object.keys(row)
+              if field == "path" || field == "host"
+                - // nothing
+              else if field == "time"
+                td(title = strftime("%F %T", row.time))= strftime("%T", row.time)
+              else if field == "message"
+                td.log-message
+                  != ansi_up.ansi_to_html(row[field])
+              else
+                td= row[field]
+
+    a(href=`/${name}?before=${logRows[logRows.length - 1].time.getNanoTime()}`) Next
