@@ -26,6 +26,23 @@ table.table.is-narrow.feed-table {
   }
 }
 
+form.search-form {
+  margin-bottom: 1em;
+  li {
+    margin-bottom: 0.5em;
+  }
+  label {
+    display: inline-block;
+    min-width: 100px;
+  }
+  input[type=text] {
+    display: inline-block;
+    width: 300px;
+  }
+  input[type=submit] {
+    margin-right: 0.5em;
+  }
+}
 
 .ansi-black-fg {
   color: #3A3A3A;

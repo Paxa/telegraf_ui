@@ -6120,6 +6120,19 @@ table.table.is-narrow.feed-table {
     max-width: 85vw;
     border-bottom-color: #333; }
 
+form.search-form {
+  margin-bottom: 1em; }
+  form.search-form li {
+    margin-bottom: 0.5em; }
+  form.search-form label {
+    display: inline-block;
+    min-width: 100px; }
+  form.search-form input[type=text] {
+    display: inline-block;
+    width: 300px; }
+  form.search-form input[type=submit] {
+    margin-right: 0.5em; }
+
 .ansi-black-fg {
   color: #3A3A3A; }
 

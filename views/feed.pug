@@ -3,13 +3,17 @@ extends layout
 block content
   h3.title Logs for #{name}
 
-  form
+  form.search-form
     ul
       for field in fields
-        li
-          label= field.fieldKey
-          input(name = `q[${field.fieldKey}]` placeholder = field.fieldType)
-    input(type="submit" value="Search")
+        if field.fieldKey != "path" && field.fieldKey != "host"
+          li
+            label.label= field.fieldKey
+            input.input(name = `q[${field.fieldKey}]` placeholder = field.fieldType value = search[field.fieldKey] type="text")
+      li
+        input.button.is-primary(type="submit" value="Search")
+        if Object.keys(search).length
+          a.button(href=`/${name}`) Reset
 
   if logRows.length
     table.table.is-narrow.feed-table
@@ -27,7 +31,7 @@ block content
               else if field == "time"
                 td(title = strftime("%F %T", row.time))= strftime("%T", row.time)
               else if field == "message"
-                td.log-message
+                td.log-message(title=row[field])
                   != ansi_up.ansi_to_html(row[field])
               else
                 td= row[field]

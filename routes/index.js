@@ -7,8 +7,8 @@ const strftime = require('strftime');
 const escapeHtml = require('escape-html');
 
 const influx = new Influx.InfluxDB({
-  host: 'localhost',
-  database: 'telegraf'
+  host: process.env.INFLUX_HOST || 'localhost',
+  database: process.env.INFLUX_DATABASE || 'telegraf'
 });
 
 var showError = function (error, res) {
@@ -36,19 +36,20 @@ var getStructure = function (feed, callback) {
   var fields = [
     {fieldKey: 'time', fieldType: 'time'}
   ];
+
   influx.query(`SHOW FIELD KEYS from "${feed}"`)
-  .then((result) => {
-    result.forEach((field) => { fields.push(field); });
-    return influx.query(`SHOW TAG KEYS FROM "${feed}"`);
-  })
-  .then((result) => {
-    result.forEach((row) => {
-      fields.push({fieldKey: row.tagKey, fieldType: 'tag'});
+    .then((result) => {
+      result.forEach(field => fields.push(field) );
+      return influx.query(`SHOW TAG KEYS FROM "${feed}"`);
+    })
+    .then((result) => {
+      result.forEach((row) => {
+        fields.push({fieldKey: row.tagKey, fieldType: 'tag'});
+      });
+      callback(fields);
+    }).catch((error) => {
+      callback(null, error);
     });
-    callback(fields);
-  }).catch((error) => {
-    callback(null, error);
-  });
 };
 
 var escapeRegExp = function (str) {
@@ -73,21 +74,36 @@ router.get('/:feed', function (req, res, next) {
       return;
     }
 
+    var search = req.query.q || {};
     Object.assign(res.locals, {
       name: req.params.feed,
       ansi_up: ansi_up,
-      strftime: strftime
+      strftime: strftime,
+      search: search
     });
 
     getStructure(req.params.feed, (feilds) => {
       res.locals.fields = feilds;
+      var fieldsHash = {};
+      feilds.forEach(field => fieldsHash[field.fieldKey] = field);
+
       var cond = [];
       if (req.query.before) {
-        cond = `time < ${req.query.before}`;
+        cond.push(`time < ${req.query.before}`);
       }
-      if (req.query.q) {
-        console.log(req.query.q);
-      }
+      Object.keys(search).forEach((key) => {
+        if (search[key] && search[key] !== '') {
+          if (fieldsHash[key].fieldType == 'integer' || fieldsHash[key].fieldType == 'float') {
+            var value = search[key].replace(/[^\d\.]/g, '');
+            cond.push(`"${key}" = ${value}`);
+          } else {
+            //cond.push(`"${key}" =~ /${escapeRegExp(search[key])}/`);
+            cond.push(`"${key}" =~ /${search[key]}/`);
+          }
+        } else {
+          delete search[key];
+        }
+      });
 
       var condStr = cond.length ? `where ${cond.join(" and ")}` : '';
       var query = `select * from ${req.params.feed} ${condStr} order by time desc limit 100`;
