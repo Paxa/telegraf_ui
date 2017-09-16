@@ -24,11 +24,15 @@ var showError = function (error, res) {
 }
 
 var getFeeds = function (res, callback) {
-  influx.getMeasurements().then((results) => {
-    res.locals.feeds = results;
-    callback();
-  }).catch((error) => {
-    callback(error);
+  return new Promise((resolve, reject) => {
+
+    influx.getMeasurements().then((results) => {
+      res.locals.feeds = results;
+      resolve(results);
+    }).catch((error) => {
+      reject(error);
+    });
+
   });
 };
 
@@ -37,7 +41,8 @@ var getStructure = function (feed, callback) {
     {fieldKey: 'time', fieldType: 'time'}
   ];
 
-  influx.query(`SHOW FIELD KEYS from "${feed}"`)
+  return new Promise((resolve, reject) => {
+    influx.query(`SHOW FIELD KEYS from "${feed}"`)
     .then((result) => {
       result.forEach(field => fields.push(field) );
       return influx.query(`SHOW TAG KEYS FROM "${feed}"`);
@@ -46,10 +51,11 @@ var getStructure = function (feed, callback) {
       result.forEach((row) => {
         fields.push({fieldKey: row.tagKey, fieldType: 'tag'});
       });
-      callback(fields);
+      resolve(fields);
     }).catch((error) => {
-      callback(null, error);
+      reject(error);
     });
+  });
 };
 
 var escapeRegExp = function (str) {
@@ -58,69 +64,101 @@ var escapeRegExp = function (str) {
 
 /* GET home page. */
 router.get('/', function(req, res, next) {
-  getFeeds(res, (error) => {
-    if (error) {
-      showError(error, res);
-    } else {
-      res.render('index');
-    }
+  getFeeds(res).then(() => {
+    res.render('index');
+  }).catch((error) => {
+    showError(error, res);
   });
 });
 
 router.get('/:feed', function (req, res, next) {
-  getFeeds(res, (error) => {
-    if (error) {
-      showError(error, res);
-      return;
-    }
-
-    var search = req.query.q || {};
-    Object.assign(res.locals, {
-      name: req.params.feed,
-      ansi_up: ansi_up,
-      strftime: strftime,
-      search: search
-    });
-
-    getStructure(req.params.feed, (feilds) => {
-      res.locals.fields = feilds;
-      var fieldsHash = {};
-      feilds.forEach(field => fieldsHash[field.fieldKey] = field);
-
-      var cond = [];
-      if (req.query.before) {
-        cond.push(`time < ${req.query.before}`);
-      }
-      Object.keys(search).forEach((key) => {
-        if (search[key] && search[key] !== '') {
-          if (fieldsHash[key].fieldType == 'integer' || fieldsHash[key].fieldType == 'float') {
-            var value = search[key].replace(/[^\d\.]/g, '');
-            cond.push(`"${key}" = ${value}`);
-          } else {
-            //cond.push(`"${key}" =~ /${escapeRegExp(search[key])}/`);
-            cond.push(`"${key}" =~ /${search[key]}/`);
-          }
-        } else {
-          delete search[key];
-        }
-      });
-
-      var condStr = cond.length ? `where ${cond.join(" and ")}` : '';
-      var query = `select * from ${req.params.feed} ${condStr} order by time desc limit 100`;
-      console.log("INFLUX", query);
-      influx.query(query).then((results) => {
-        res.render('feed', {logRows: results,});
-      }).catch((error) => {
-        showError(error, res);
-      });
-    });
+  var search = req.query.q || {};
+  Object.assign(res.locals, {
+    name: req.params.feed,
+    ansi_up: ansi_up,
+    strftime: strftime,
+    search: search
   });
 
+  getFeeds(res).then(() => {
+    return getStructure(req.params.feed);
+  }).then((feilds) => {
+    res.locals.fields = feilds;
+    var fieldsHash = {};
+    feilds.forEach(field => fieldsHash[field.fieldKey] = field);
+
+    var cond = [];
+    if (req.query.before) {
+      cond.push(`time < ${req.query.before}`);
+    }
+
+    Object.keys(search).forEach((key) => {
+      if (search[key] && search[key] !== '') {
+        if (fieldsHash[key].fieldType == 'integer' || fieldsHash[key].fieldType == 'float') {
+          var value = search[key].replace(/[^\d\.]/g, '');
+          cond.push(`"${key}" = ${value}`);
+        } else {
+          //cond.push(`"${key}" =~ /${escapeRegExp(search[key])}/`);
+          cond.push(`"${key}" =~ /${search[key]}/`);
+        }
+      } else {
+        delete search[key];
+      }
+    });
+
+    var condStr = cond.length ? `where ${cond.join(" and ")}` : '';
+    var query = `select * from ${req.params.feed} ${condStr} order by time desc limit 100`;
+
+    influx.query(query).then((results) => {
+      res.render('feed', {logRows: results,});
+    }).catch((error) => {
+      showError(error, res);
+    });
+
+  }).catch((error) => {
+    showError(error, res);
+  });
+});
+
+router.get('/:feed/stats', function (req, res, next) {
+  var stats = {total: 0, interval: 20, rate: {}};
+
+  Object.assign(res.locals, {
+    name: req.params.feed,
+    ansi_up: ansi_up,
+    strftime: strftime
+  });
+
+  getFeeds(res).then(() => {
+    return influx.query(`select count(*) from "${req.params.feed}"`);
+  }).then((results) => {
+    Object.keys(results[0]).forEach((key) => {
+      if (typeof results[0][key] == 'number' && results[0][key] > stats.total) {
+        stats.total = results[0][key];
+      }
+    });
+    return influx.query(`select * from "${req.params.feed}" order by time asc limit 1`);
+  }).then((results) => {
+    stats.firstAt = results[0] && results[0].time;
+    return influx.query(`select * from "${req.params.feed}" order by time desc limit 1`);
+  }).then((results) => {
+    stats.lastAt = results[0] && results[0].time;
+    return influx.query(`select count(*) from "${req.params.feed}" where time > now() - 1d group by time(${stats.interval}m)`);
+  }).then((results) => {
+    results.forEach((row) => {
+      var value = 0;
+      Object.keys(row).forEach((key) => {
+        if (key != 'time' && row[key] > value) {
+          value = row[key];
+        }
+      });
+      stats.rate[row.time.getTime()] = value;
+    });
+
+    res.render('stats', {stats: stats});
+  }).catch((error) => {
+    showError(error, res);
+  });
 });
 
 module.exports = router;
-
-
-// s 1505195221517137000
-// q 1505155715029000000
-// f 1505155715029849000

@@ -1,0 +1,72 @@
+extends layout
+
+block content
+  h3.title Stats #{name}
+
+  table.table
+    tr
+      th Total rows
+      td= stats.total
+    tr
+      th First record
+      td= strftime("%F %T %z", stats.firstAt)
+    tr
+      th Last record
+      td= strftime("%F %T %z", stats.lastAt)
+
+
+  .chart-wrap(style="max-width: 100%; max-height: 400px")
+    canvas(id="myChart" width="1200" height="400")
+
+  script(src='/javascripts/moment.js')
+  script(src='/javascripts/Chart.js')
+  script.
+    var stats = #[!= JSON.stringify(stats)];
+    var ctx = document.querySelector("#myChart").getContext('2d');
+    var labels = [], data = [];
+    Object.keys(stats.rate).forEach((time) => {
+      labels.push(new Date(parseInt(time)));
+      data.push(stats.rate[time]);
+    });
+    var myChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: '#{name}',
+          data: data,
+          backgroundColor: [
+              'rgba(54, 162, 235, 0.2)',
+              'rgba(255, 206, 86, 0.2)',
+              'rgba(75, 192, 192, 0.2)',
+              'rgba(153, 102, 255, 0.2)',
+              'rgba(255, 159, 64, 0.2)'
+          ],
+          borderColor: [
+              'rgba(54, 162, 235, 1)',
+              'rgba(255, 206, 86, 1)',
+              'rgba(75, 192, 192, 1)',
+              'rgba(153, 102, 255, 1)',
+              'rgba(255, 159, 64, 1)'
+          ],
+          borderWidth: 1
+        }]
+      },
+      options: {
+        scales: {
+          xAxes: [{
+            type: 'time',
+            distribution: 'series',
+            ticks: {
+              source: 'labels'
+            }
+          }],
+          yAxes: [{
+            scaleLabel: {
+              display: true,
+              labelString: `Messages per ${stats.interval} minutes`
+            }
+          }]
+        }
+      }
+    });
