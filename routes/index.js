@@ -116,10 +116,10 @@ router.get('/:feed', function (req, res, next) {
             console.log(`Warning: Unknown time range format: ${search[key]}`);
           }
         } else if (key == "time_afer") {
-          var date = new Date(search[key] + " +0700");
+          var date = new Date(search[key] + " +0800");
           cond.push(`"time" > ${date.getTime() * 1000000}`);
         } else if (key == "time_before") {
-          var date = new Date(search[key] + " +0700");
+          var date = new Date(search[key] + " +0800");
           cond.push(`"time" < ${date.getTime() * 1000000}`);
         } else if (fieldsHash[key] && (fieldsHash[key].fieldType == 'integer' || fieldsHash[key].fieldType == 'float')) {
           var value = search[key].replace(/[^\d\.]/g, '');
