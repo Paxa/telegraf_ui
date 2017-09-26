@@ -126,7 +126,7 @@ router.get('/:feed', function (req, res, next) {
           cond.push(`"${key}" = ${value}`);
         } else {
           //cond.push(`"${key}" =~ /${escapeRegExp(search[key])}/`);
-          cond.push(`"${key}" =~ /${search[key]}/`);
+          cond.push(`"${key}" =~ /${search[key].replace("/", "\\/")}/`);
         }
       } else {
         delete search[key];
