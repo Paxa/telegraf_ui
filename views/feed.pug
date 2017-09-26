@@ -3,17 +3,37 @@ extends layout
 block content
   h3.title Logs for #{name}
 
-  form.search-form
+  form.search-form(onsubmit = 'disableEmpty(this)')
     ul
       for field in fields
         if field.fieldKey != "path" && field.fieldKey != "host"
-          li
-            label.label= field.fieldKey
-            input.input(name = `q[${field.fieldKey}]` placeholder = field.fieldType value = search[field.fieldKey] type="text")
+          if field.fieldKey == 'time'
+            li
+              label.label Time
+              span.select
+                select(name="q[time_range]")
+                  option
+                  option(value="5m"  selected = search.time_range == "5m" ) last 5 min
+                  option(value="15m" selected = search.time_range == "15m") last 15 min
+                  option(value="1h"  selected = search.time_range == "1h") last 1 hour
+                  option(value="12h" selected = search.time_range == "12h") last 12 hour
+                  option(value="1d" selected = search.time_range == "1d") last 24 hours
+                  option(value="1w"  selected = search.time_range == "1w") last 1 week
+            li
+              label.label Time Range
+              - startTime = new Date(Date.now() - 24 * 3600 * 1000);
+              input.input(type="text" name = `q[time_afer]` value = search.time_afer placeholder = strftime("%F %T", startTime))
+              = " - "
+              input.input(type="text" name = `q[time_before]` value = search.time_before placeholder = strftime("%F %T", new Date()))
+          else
+            li
+              label.label= field.fieldKey
+              input.input(name = `q[${field.fieldKey}]` placeholder = field.fieldType value = search[field.fieldKey] type="text")
       li
         input.button.is-primary(type="submit" value="Search")
         if Object.keys(search).length
           a.button(href=`/${name}`) Reset
+          = " "
         a.button(href=`/${name}/stats`) Stats
 
   if logRows.length

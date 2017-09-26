@@ -16,19 +16,34 @@ var showError = function (error, res) {
   res.json({
     status: "error",
     error: error.message,
+    stack: error.stack,
     response: {
-      code: error.res.statusCode,
-      headers: error.res.headers
+      code: error.res && error.res.statusCode,
+      headers: error.res && error.res.headers
     }
   });
-}
+};
 
-var getFeeds = function (res, callback) {
+var query = function (sql) {
+  var startTime = Date.now();
+
+  return new Promise((resolve, reject) => {
+    influx.query(sql).then((results) => {
+      console.log(`Influx SQL: ${sql} -- ${Date.now() - startTime}ms`);
+      resolve(results);
+    }).catch((error) => {
+      console.log(`Influx ERROR: ${sql} -- ${error.message} -- ${Date.now() - startTime}ms`);
+      reject(error);
+    });
+  });
+};
+
+var getFeeds = function (res) {
   return new Promise((resolve, reject) => {
 
-    influx.getMeasurements().then((results) => {
-      res.locals.feeds = results;
-      resolve(results);
+    query("show measurements").then((results) => {
+      res.locals.feeds = results.map((row) => { return row.name });
+      resolve(res.locals.feeds);
     }).catch((error) => {
       reject(error);
     });
@@ -36,16 +51,16 @@ var getFeeds = function (res, callback) {
   });
 };
 
-var getStructure = function (feed, callback) {
+var getStructure = function (feed) {
   var fields = [
     {fieldKey: 'time', fieldType: 'time'}
   ];
 
   return new Promise((resolve, reject) => {
-    influx.query(`SHOW FIELD KEYS from "${feed}"`)
+    query(`SHOW FIELD KEYS from "${feed}"`)
     .then((result) => {
       result.forEach(field => fields.push(field) );
-      return influx.query(`SHOW TAG KEYS FROM "${feed}"`);
+      return query(`SHOW TAG KEYS FROM "${feed}"`);
     })
     .then((result) => {
       result.forEach((row) => {
@@ -94,7 +109,19 @@ router.get('/:feed', function (req, res, next) {
 
     Object.keys(search).forEach((key) => {
       if (search[key] && search[key] !== '') {
-        if (fieldsHash[key].fieldType == 'integer' || fieldsHash[key].fieldType == 'float') {
+        if (key == "time_range") {
+          if (search[key].match(/^\d+(s|m|h|d|w)$/)) {
+            cond.push(`"time" > now() - ${search[key]}`);
+          } else {
+            console.log(`Warning: Unknown time range format: ${search[key]}`);
+          }
+        } else if (key == "time_afer") {
+          var date = new Date(search[key] + " +0700");
+          cond.push(`"time" > ${date.getTime() * 1000000}`);
+        } else if (key == "time_before") {
+          var date = new Date(search[key] + " +0700");
+          cond.push(`"time" < ${date.getTime() * 1000000}`);
+        } else if (fieldsHash[key] && (fieldsHash[key].fieldType == 'integer' || fieldsHash[key].fieldType == 'float')) {
           var value = search[key].replace(/[^\d\.]/g, '');
           cond.push(`"${key}" = ${value}`);
         } else {
@@ -107,10 +134,12 @@ router.get('/:feed', function (req, res, next) {
     });
 
     var condStr = cond.length ? `where ${cond.join(" and ")}` : '';
-    var query = `select * from ${req.params.feed} ${condStr} order by time desc limit 100`;
+    var listQuery = `select * from ${req.params.feed} ${condStr} order by time desc limit 50`;
 
-    influx.query(query).then((results) => {
-      res.render('feed', {logRows: results,});
+    query(listQuery).then((results) => {
+      res.render('feed', {
+        logRows: results.reverse()
+      });
     }).catch((error) => {
       showError(error, res);
     });
@@ -130,20 +159,20 @@ router.get('/:feed/stats', function (req, res, next) {
   });
 
   getFeeds(res).then(() => {
-    return influx.query(`select count(*) from "${req.params.feed}"`);
+    return query(`select count(*) from "${req.params.feed}"`);
   }).then((results) => {
     Object.keys(results[0]).forEach((key) => {
       if (typeof results[0][key] == 'number' && results[0][key] > stats.total) {
         stats.total = results[0][key];
       }
     });
-    return influx.query(`select * from "${req.params.feed}" order by time asc limit 1`);
+    return query(`select * from "${req.params.feed}" order by time asc limit 1`);
   }).then((results) => {
     stats.firstAt = results[0] && results[0].time;
-    return influx.query(`select * from "${req.params.feed}" order by time desc limit 1`);
+    return query(`select * from "${req.params.feed}" order by time desc limit 1`);
   }).then((results) => {
     stats.lastAt = results[0] && results[0].time;
-    return influx.query(`select count(*) from "${req.params.feed}" where time > now() - 1d group by time(${stats.interval}m)`);
+    return query(`select count(*) from "${req.params.feed}" where time > now() - 1d group by time(${stats.interval}m)`);
   }).then((results) => {
     results.forEach((row) => {
       var value = 0;
